@@ -2,8 +2,8 @@ from typing import Any, Dict, List, Union
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 
-from src.providers import BaseProvider
-from src.providers.utils import clean_text, split_symbol_name, to_iso_date
+from ..handler.base import BaseProvider
+from ..utils import clean_text, split_symbol_name, to_iso_date
 from .model import (
     MarketLiteral,
     SECTION_TO_TYPE,
@@ -14,7 +14,7 @@ from .model import (
 )
 
 
-class TwseBaseProvider(BaseProvider):
+class Base(BaseProvider):
     """TWSE 專用基底類別，負責底層 HTTP 請求、重試機制與 HTML/資料解析。"""
 
     ISIN_URL: str = "https://isin.twse.com.tw/isin/C_public.jsp"

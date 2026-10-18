@@ -1,5 +1,4 @@
-from .client import TwseClient
+from .client import Client
 from .model import TwseSecurityItem
 
-__all__ = ["TwseClient", "TwseSecurityItem"]
-
+__all__ = ["Client", "TwseSecurityItem"]

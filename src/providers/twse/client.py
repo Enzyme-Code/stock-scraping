@@ -1,10 +1,10 @@
 from typing import Any, Dict, List, Union
 
-from .base import TwseBaseProvider
+from .base import Base
 from .model import MarketLiteral, SecurityTypeLiteral
 
 
-class TwseClient(TwseBaseProvider):
+class Client(Base):
     """TWSE 證交所資料客戶端，提供對外公開的查詢端口。"""
 
     def get_list(
