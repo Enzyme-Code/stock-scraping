@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 
@@ -43,9 +43,9 @@ class Base(BaseProvider):
     def _fetch_isin_html(self, str_mode: int) -> str:
         """
         抓取國際證券辨識號碼一覽表 HTML：
-        - str_mode=2: 本國上市證券 (TWSE)
-        - str_mode=4: 本國上櫃證券 (TPEx)
-        - str_mode=5: 本國興櫃證券 (ESB)
+        - str_mode=2: 本國上市證券 (twse)
+        - str_mode=4: 本國上櫃證券 (tpex)
+        - str_mode=5: 本國興櫃證券 (esb)
         """
         response = self._request("GET", self.ISIN_URL, params={"strMode": str_mode})
         return response.content.decode("cp950", errors="replace")
@@ -106,7 +106,7 @@ class Base(BaseProvider):
 
     def _get_list(
         self,
-        market: Union[MarketLiteral, int] = "all",
+        market: MarketLiteral = "all",
     ) -> List[Dict[str, Any]]:
         """依 market 抓取並解析對應的 ISIN 清單。"""
         str_modes = resolve_str_modes(market)

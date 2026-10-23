@@ -1,35 +1,18 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 
 
-MarketLiteral = Literal[
-    "all",
-    "twse",
-    "tpex",
-    "esb",
-    "上市",
-    "上櫃",
-    "興櫃",
-]
+MarketLiteral = Literal["all", "twse", "tpex", "esb"]
 
 # 市場別對應 ISIN 網頁的 strMode 參數
-# strMode=2: 上市 (TWSE)
-# strMode=4: 上櫃 (TPEx / OTC)
-# strMode=5: 興櫃 (ESB / Emerging)
+# strMode=2: 上市 (twse)
+# strMode=4: 上櫃 (tpex)
+# strMode=5: 興櫃 (esb)
 MARKET_TO_STR_MODES: Dict[str, List[int]] = {
     "all": [2, 4, 5],
     "twse": [2],
-    "listed": [2],
-    "上市": [2],
-    "2": [2],
     "tpex": [4],
-    "otc": [4],
-    "上櫃": [4],
-    "4": [4],
     "esb": [5],
-    "emerging": [5],
-    "興櫃": [5],
-    "5": [5],
 }
 
 # 網頁上的中文分類標題 -> 對應的英文 type 名稱 (涵蓋上市 strMode=2 與上櫃 strMode=4)
@@ -47,17 +30,17 @@ SECTION_TO_TYPE: Dict[str, str] = {
 }
 
 
-def resolve_str_modes(market: Union[str, int]) -> List[int]:
+def resolve_str_modes(market: MarketLiteral) -> List[int]:
     """
     將傳入的 market 參數轉換為對應的 strMode 清單。
-    支援 'all', 'twse'/'上市'/2, 'tpex'/'上櫃'/4, 'esb'/'興櫃'/5。
+    僅支援 'all', 'twse', 'tpex', 'esb'。
     """
-    key = str(market).strip().lower()
+    key = market.strip().lower()
     if key in MARKET_TO_STR_MODES:
         return MARKET_TO_STR_MODES[key]
 
     raise ValueError(
-        f"Invalid market '{market}'. Expected one of: 'all', 'twse' (上市), 'tpex' (上櫃), 'esb' (興櫃)"
+        f"Invalid market '{market}'. Expected one of: 'all', 'twse', 'tpex', 'esb'"
     )
 
 
