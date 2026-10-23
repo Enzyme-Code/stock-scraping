@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Union
 
 from .base import Base
-from .model import MarketLiteral, SecurityTypeLiteral
+from .model import MarketLiteral
 
 
 class Client(Base):
@@ -9,17 +9,12 @@ class Client(Base):
 
     def get_list(
         self,
-        type: SecurityTypeLiteral = "all",
         market: Union[MarketLiteral, int] = "all",
     ) -> List[Dict[str, Any]]:
         """
         取得本國上市 (strMode=2)、上櫃 (strMode=4)、興櫃 (strMode=5) 有價證券清單。
 
         Args:
-            type: 證券類別篩選，預設為 'all'。
-                  可選值: 'all', 'stock', 'etf', 'etn', 'warrant',
-                         'preferred_stock', 'innovation_board', 'tdr', 'reit', 'abs'
-                         (亦支援直接傳入中文名稱如 '股票', 'ETF' 等)
             market: 市場別篩選，預設為 'all' (同時抓取上市、上櫃、興櫃)。
                     可選值:
                     - 'all': 全部市場 (strMode=2, 4, 5)
@@ -28,6 +23,6 @@ class Client(Base):
                     - 'esb'  / '興櫃' / 5: 興櫃 (strMode=5)
 
         Returns:
-            清洗後的證券清單 list[dict]。
+            清洗後的證券清單 list[dict]，每筆資料仍包含 'type' 欄位供下游 pipeline 篩選。
         """
-        return self._get_list(type=type, market=market)
+        return self._get_list(market=market)

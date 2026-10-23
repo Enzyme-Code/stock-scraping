@@ -2,19 +2,6 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Union
 
 
-SecurityTypeLiteral = Literal[
-    "all",
-    "stock",
-    "warrant",
-    "preferred_stock",
-    "innovation_board",
-    "etf",
-    "etn",
-    "tdr",
-    "reit",
-    "abs",
-]
-
 MarketLiteral = Literal[
     "all",
     "twse",
@@ -59,8 +46,6 @@ SECTION_TO_TYPE: Dict[str, str] = {
     "受益證券-資產基礎證券": "abs",
 }
 
-VALID_TYPES = {"all", *SECTION_TO_TYPE.values()}
-
 
 def resolve_str_modes(market: Union[str, int]) -> List[int]:
     """
@@ -76,23 +61,6 @@ def resolve_str_modes(market: Union[str, int]) -> List[int]:
     )
 
 
-def normalize_security_type(type_val: str) -> str:
-    """
-    驗證並標準化傳入的 type 參數。
-    支援傳入英文 ('all', 'stock', 'etf', 'etn'...) 或中文標題 ('股票', 'ETF'...)。
-    """
-    cleaned = type_val.strip()
-    if cleaned in SECTION_TO_TYPE:
-        return SECTION_TO_TYPE[cleaned]
-
-    lowered = cleaned.lower()
-    if lowered in VALID_TYPES:
-        return lowered
-
-    valid_str = ", ".join(sorted(VALID_TYPES))
-    raise ValueError(f"Invalid type '{type_val}'. Expected one of: {valid_str}")
-
-
 @dataclass
 class TwseSecurityItem:
     """本國上市/上櫃/興櫃證券國際證券辨識號碼一覽表 (ISIN) 資料模型。"""
@@ -105,7 +73,6 @@ class TwseSecurityItem:
     market: str                  # 市場別 ('上市', '上櫃', '興櫃')
     industry: Optional[str]      # 產業別 (例如 '水泥工業'，若無則為 None)
     cfi_code: str                # CFICode (例如 'ESVUFR')
-    note: Optional[str] = None   # 備註 (若無則為 None)
 
     def to_dict(self) -> Dict[str, Any]:
         """轉換為標準 dict 格式。"""

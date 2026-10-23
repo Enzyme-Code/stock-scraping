@@ -7,9 +7,7 @@ from ..utils import clean_text, split_symbol_name, to_iso_date
 from .model import (
     MarketLiteral,
     SECTION_TO_TYPE,
-    SecurityTypeLiteral,
     TwseSecurityItem,
-    normalize_security_type,
     resolve_str_modes,
 )
 
@@ -53,10 +51,9 @@ class Base(BaseProvider):
         return response.content.decode("cp950", errors="replace")
 
     def _parse_isin_table(
-        self, html: str, target_type: str = "all", str_mode: int = 2
+        self, html: str, str_mode: int = 2
     ) -> List[Dict[str, Any]]:
         """解析 ISIN 網頁表格並清洗為 list[dict] 格式。"""
-        normalized_type = normalize_security_type(target_type)
         soup = BeautifulSoup(html, "lxml")
 
         results: List[Dict[str, Any]] = []
@@ -82,10 +79,8 @@ class Base(BaseProvider):
             if first_col_text.startswith("有價證券代號"):
                 continue
 
-            # 若目前區塊不在定義的分類內，或不符合篩選的 type 則跳過
+            # 若目前區塊不在定義的分類內則跳過
             if not current_type:
-                continue
-            if normalized_type != "all" and current_type != normalized_type:
                 continue
 
             symbol, name = split_symbol_name(tds[0].get_text())
@@ -94,7 +89,6 @@ class Base(BaseProvider):
             market = clean_text(tds[3].get_text())
             industry = clean_text(tds[4].get_text()) or None
             cfi_code = clean_text(tds[5].get_text())
-            note = clean_text(tds[6].get_text()) or None
 
             item = TwseSecurityItem(
                 symbol=symbol,
@@ -105,7 +99,6 @@ class Base(BaseProvider):
                 market=market,
                 industry=industry,
                 cfi_code=cfi_code,
-                note=note,
             )
             results.append(item.to_dict())
 
@@ -113,16 +106,15 @@ class Base(BaseProvider):
 
     def _get_list(
         self,
-        type: SecurityTypeLiteral = "all",
         market: Union[MarketLiteral, int] = "all",
     ) -> List[Dict[str, Any]]:
-        """依 market 與 type 抓取並解析對應的 ISIN 清單。"""
+        """依 market 抓取並解析對應的 ISIN 清單。"""
         str_modes = resolve_str_modes(market)
         results: List[Dict[str, Any]] = []
 
         for mode in str_modes:
             html = self._fetch_isin_html(str_mode=mode)
-            items = self._parse_isin_table(html=html, target_type=type, str_mode=mode)
+            items = self._parse_isin_table(html=html, str_mode=mode)
             results.extend(items)
 
         return results
