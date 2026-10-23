@@ -1,5 +1,5 @@
 provider:
-  timeout: 10.0            # HTTP 請求超時時間 (秒)
+  timeout: 60.0            # HTTP 請求超時時間 (秒)
   sleep_range: [2.0, 4.0]  # 基礎隨機等待時間範圍 [最小秒數, 最大秒數]
   max_retries: 3           # 最大重試次數
   backoff_factor: 2.0      # 重試等待時間倍數 (每次重試為前一次的 2 倍)
