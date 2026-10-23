@@ -49,3 +49,6 @@ geckodriver
 ._*
 Thumbs.db
 [Dd]esktop.ini
+
+# test file 
+playground/

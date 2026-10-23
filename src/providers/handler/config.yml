@@ -1,0 +1,20 @@
+provider:
+  timeout: 60.0            # HTTP 請求超時時間 (秒)
+  sleep_range: [2.0, 4.0]  # 基礎隨機等待時間範圍 [最小秒數, 最大秒數]
+  max_retries: 3           # 最大重試次數
+  backoff_factor: 2.0      # 重試等待時間倍數 (每次重試為前一次的 2 倍)
+  impersonate: "chrome"    # curl_cffi 模擬的瀏覽器指紋
+  debug: false             # 是否開啟除錯訊息輸出
+
+  user_agents:
+    # Chrome (Windows / macOS)
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    # Edge (Windows)
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0"
+    # Firefox (Windows / macOS)
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:125.0) Gecko/20100101 Firefox/125.0"
+    # Safari (macOS)
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Safari/605.1.15"
