@@ -1,5 +1,7 @@
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional, Set
+from dataclasses import dataclass
+from typing import Dict, Optional, Set
+
+from ..handler.model import BaseModel
 
 
 # MOPS t05st03 API 欄位名稱 (isHidden=False) -> 模型欄位名稱對照表
@@ -77,7 +79,7 @@ DATE_FIELDS: Set[str] = {
 
 
 @dataclass
-class MopsCompanyInfo:
+class MopsCompanyInfo(BaseModel):
     """公開資訊觀測站 (MOPS) 公司基本資料 (t05st03) 資料模型 (僅包含 isHidden=False 的前端顯示欄位)。"""
 
     symbol: Optional[str] = None                          # 股票代號 (例如 '2330')
@@ -136,7 +138,3 @@ class MopsCompanyInfo:
     before_change_name: Optional[str] = None              # 變更前名稱
     before_change_abbreviation: Optional[str] = None      # 變更前簡稱
     note: Optional[str] = None                            # 備註
-
-    def to_dict(self) -> Dict[str, Any]:
-        """轉換為標準 dict 格式。"""
-        return asdict(self)
