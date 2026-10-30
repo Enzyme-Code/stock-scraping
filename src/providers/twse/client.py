@@ -26,3 +26,16 @@ class Client(Base):
             清洗後的證券清單 list[dict]，每筆資料包含 'type' 欄位供下游 pipeline 篩選。
         """
         return self._get_list(market=market)
+
+    def get_stock_price(self, symbol: str, date: str) -> List[Dict[str, Any]]:
+        """
+        取得指定上市股票於該日期所屬月份的各日成交資訊 (STOCK_DAY)。
+
+        Args:
+            symbol: 上市股票代號，例如 '2330'。
+            date: 查詢日期字串，強制使用 ISO 格式 'YYYY-MM-DD' (例如 '2026-10-28')。
+
+        Returns:
+            清洗後的個股日成交資訊 list[dict]。
+        """
+        return self._get_stock_price(symbol=symbol, date=date)
