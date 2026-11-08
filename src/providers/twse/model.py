@@ -1,5 +1,7 @@
-from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Literal, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Literal
+
+from ..handler.model import BaseModel
 
 
 MarketLiteral = Literal["all", "twse", "tpex", "esb"]
@@ -45,18 +47,14 @@ def resolve_str_modes(market: MarketLiteral) -> List[int]:
 
 
 @dataclass
-class TwseSecurityItem:
+class TwseSecurityItem(BaseModel):
     """本國上市/上櫃/興櫃證券國際證券辨識號碼一覽表 (ISIN) 資料模型。"""
 
     symbol: str                  # 證券代號 (例如 '1101')
     name: str                    # 證券名稱 (例如 '台泥')
     type: str                    # 證券類別 (例如 'stock', 'etf', 'etn')
     isin_code: str               # 國際證券辨識號碼 (ISIN Code)
-    listing_date: Optional[str]  # 上市/上櫃/興櫃日 (ISO 格式: YYYY-MM-DD)
+    listing_date: str  # 上市/上櫃/興櫃日 (ISO 格式: YYYY-MM-DD)
     market: str                  # 市場別 ('上市', '上櫃', '興櫃')
-    industry: Optional[str]      # 產業別 (例如 '水泥工業'，若無則為 None)
+    industry: str      # 產業別 (例如 '水泥工業'，若無則為 None)
     cfi_code: str                # CFICode (例如 'ESVUFR')
-
-    def to_dict(self) -> Dict[str, Any]:
-        """轉換為標準 dict 格式。"""
-        return asdict(self)
