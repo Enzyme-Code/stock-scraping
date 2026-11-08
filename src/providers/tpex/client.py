@@ -18,3 +18,15 @@ class Client(Base):
             清洗後的個股日成交資訊 list[dict] (成交股數與金額已統一換算為「股」與「元」)。
         """
         return self._get_stock_price(symbol=symbol, date=date)
+
+    def get_institutional_investors(self, date: str) -> List[Dict[str, Any]]:
+        """
+        取得指定日期的上櫃三大法人買賣超日報 (insti/dailyTrade)。
+
+        Args:
+            date: 查詢日期字串，強制使用 ISO 格式 'YYYY-MM-DD' (例如 '2026-11-06')。
+
+        Returns:
+            清洗後的三大法人買賣超明細 list[dict]。
+        """
+        return self._get_institutional_investors(date=date)
