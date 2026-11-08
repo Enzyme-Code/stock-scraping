@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from curl_cffi import requests
 
 from ..handler.base import BaseProvider
-from ..handler.model import StockPriceItem
+from ..handler.model import InstitutionalInvestorItem, StockPriceItem
 from ..utils import clean_text, format_iso_date, split_symbol_name, to_float, to_int, to_iso_date
 from .model import (
     MarketLiteral,
@@ -18,6 +18,7 @@ class Base(BaseProvider):
 
     ISIN_URL: str = "https://isin.twse.com.tw/isin/C_public.jsp"
     STOCK_DAY_URL: str = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
+    INSTI_T86_URL: str = "https://www.twse.com.tw/rwd/zh/fund/T86"
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         """發送帶有自動重試、User-Agent 輪替與延遲等待的 HTTP 請求。"""
@@ -195,3 +196,75 @@ class Base(BaseProvider):
         query_date = format_iso_date(date, "%Y%m01")
         raw_json = self._fetch_stock_price_json(symbol=cleaned_symbol, query_date=query_date)
         return self._parse_stock_price(data=raw_json, symbol=cleaned_symbol)
+
+    def _fetch_institutional_investors_json(self, query_date: str) -> Dict[str, Any]:
+        """發送 GET 請求至 TWSE T86 API 取得指定日期的三大法人買賣超日報 JSON。"""
+        params = {
+            "date": query_date,
+            "selectType": "ALL",
+            "response": "json",
+        }
+        response = self._request("GET", self.INSTI_T86_URL, params=params)
+        return response.json()
+
+    def _parse_institutional_investors(
+        self, data: Dict[str, Any], iso_date: str
+    ) -> List[Dict[str, Any]]:
+        """
+        解析 TWSE T86 JSON 並清洗為 list[dict] 格式。
+        略過 row[11] (自營商合計) 與 row[18] (三大法人合計) 兩個小計/合計欄位。
+        """
+        if data.get("stat") != "OK":
+            return []
+
+        rows = data.get("data")
+        if not isinstance(rows, list):
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 18:
+                continue
+
+            symbol = clean_text(row[0])
+            name = clean_text(row[1])
+            vals = [
+                to_int(row[2]),   # foreign_buy
+                to_int(row[3]),   # foreign_sell
+                to_int(row[5]),   # foreign_dealer_buy
+                to_int(row[6]),   # foreign_dealer_sell
+                to_int(row[8]),   # trust_buy
+                to_int(row[9]),   # trust_sell
+                to_int(row[12]),  # dealer_self_buy
+                to_int(row[13]),  # dealer_self_sell
+                to_int(row[15]),  # dealer_hedge_buy
+                to_int(row[16]),  # dealer_hedge_sell
+            ]
+            if not symbol or any(v is None for v in vals):
+                continue
+
+            item = InstitutionalInvestorItem(
+                symbol=symbol,
+                name=name,
+                date=iso_date,
+                foreign_buy=vals[0],          # type: ignore[arg-type]
+                foreign_sell=vals[1],         # type: ignore[arg-type]
+                foreign_dealer_buy=vals[2],   # type: ignore[arg-type]
+                foreign_dealer_sell=vals[3],  # type: ignore[arg-type]
+                trust_buy=vals[4],            # type: ignore[arg-type]
+                trust_sell=vals[5],           # type: ignore[arg-type]
+                dealer_self_buy=vals[6],      # type: ignore[arg-type]
+                dealer_self_sell=vals[7],     # type: ignore[arg-type]
+                dealer_hedge_buy=vals[8],     # type: ignore[arg-type]
+                dealer_hedge_sell=vals[9],    # type: ignore[arg-type]
+            )
+            results.append(item.to_dict())
+
+        return results
+
+    def _get_institutional_investors(self, date: str) -> List[Dict[str, Any]]:
+        """抓取並解析指定交易日的上市三大法人買賣超日報。"""
+        query_date = format_iso_date(date, "%Y%m%d")
+        iso_date = format_iso_date(date, "%Y-%m-%d")
+        raw_json = self._fetch_institutional_investors_json(query_date=query_date)
+        return self._parse_institutional_investors(data=raw_json, iso_date=iso_date)

@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 from curl_cffi import requests
 
 from ..handler.base import BaseProvider
-from ..handler.model import StockPriceItem
+from ..handler.model import InstitutionalInvestorItem, StockPriceItem
 from ..utils import clean_text, format_iso_date, to_float, to_int, to_iso_date
 
 
@@ -11,6 +11,9 @@ class Base(BaseProvider):
 
     TRADING_STOCK_URL: str = (
         "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
+    )
+    INSTI_DAILY_URL: str = (
+        "https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
     )
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
@@ -119,3 +122,82 @@ class Base(BaseProvider):
         query_date = format_iso_date(date, "%Y/%m/01")
         raw_json = self._fetch_stock_price_json(symbol=cleaned_symbol, query_date=query_date)
         return self._parse_stock_price(data=raw_json, symbol=cleaned_symbol)
+
+    def _fetch_institutional_investors_json(self, query_date: str) -> Dict[str, Any]:
+        """發送 GET 請求至 TPEx insti/dailyTrade API 取得指定日期的三大法人買賣超日報 JSON。"""
+        params = {
+            "type": "Daily",
+            "sect": "AL",
+            "date": query_date,
+            "id": "",
+            "response": "json",
+        }
+        response = self._request("GET", self.INSTI_DAILY_URL, params=params)
+        return response.json()
+
+    def _parse_institutional_investors(
+        self, data: Dict[str, Any], iso_date: str
+    ) -> List[Dict[str, Any]]:
+        """
+        解析 TPEx insti/dailyTrade JSON 並清洗為 list[dict] 格式。
+        略過 row[8..10] (外資合計)、row[20..22] (自營商合計) 與 row[23] (三大法人合計) 欄位。
+        """
+        tables = data.get("tables")
+        if not isinstance(tables, list) or not tables:
+            return []
+
+        first_table = tables[0]
+        if not isinstance(first_table, dict):
+            return []
+
+        rows = first_table.get("data")
+        if not isinstance(rows, list):
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 20:
+                continue
+
+            symbol = clean_text(row[0])
+            name = clean_text(row[1])
+            vals = [
+                to_int(row[2]),   # foreign_buy
+                to_int(row[3]),   # foreign_sell
+                to_int(row[5]),   # foreign_dealer_buy
+                to_int(row[6]),   # foreign_dealer_sell
+                to_int(row[11]),  # trust_buy
+                to_int(row[12]),  # trust_sell
+                to_int(row[14]),  # dealer_self_buy
+                to_int(row[15]),  # dealer_self_sell
+                to_int(row[17]),  # dealer_hedge_buy
+                to_int(row[18]),  # dealer_hedge_sell
+            ]
+            if not symbol or any(v is None for v in vals):
+                continue
+
+            item = InstitutionalInvestorItem(
+                symbol=symbol,
+                name=name,
+                date=iso_date,
+                foreign_buy=vals[0],          # type: ignore[arg-type]
+                foreign_sell=vals[1],         # type: ignore[arg-type]
+                foreign_dealer_buy=vals[2],   # type: ignore[arg-type]
+                foreign_dealer_sell=vals[3],  # type: ignore[arg-type]
+                trust_buy=vals[4],            # type: ignore[arg-type]
+                trust_sell=vals[5],           # type: ignore[arg-type]
+                dealer_self_buy=vals[6],      # type: ignore[arg-type]
+                dealer_self_sell=vals[7],     # type: ignore[arg-type]
+                dealer_hedge_buy=vals[8],     # type: ignore[arg-type]
+                dealer_hedge_sell=vals[9],    # type: ignore[arg-type]
+            )
+            results.append(item.to_dict())
+
+        return results
+
+    def _get_institutional_investors(self, date: str) -> List[Dict[str, Any]]:
+        """抓取並解析指定交易日的上櫃三大法人買賣超日報。"""
+        query_date = format_iso_date(date, "%Y/%m/%d")
+        iso_date = format_iso_date(date, "%Y-%m-%d")
+        raw_json = self._fetch_institutional_investors_json(query_date=query_date)
+        return self._parse_institutional_investors(data=raw_json, iso_date=iso_date)
