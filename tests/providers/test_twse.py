@@ -84,6 +84,62 @@ def test_twse_get_stock_price_returns_cleaned_list_of_dicts():
     }
 
 
+def test_twse_get_institutional_investors_returns_cleaned_list_of_dicts():
+    """驗證 TwseClient.get_institutional_investors() 正確回傳三大法人明細 list[dict] (排除小計/合計)。"""
+    sample_json = {
+        "stat": "OK",
+        "date": "20261106",
+        "data": [
+            [
+                "00632R",
+                "元大台灣50反1   ",
+                "11,931,500",
+                "11,159,000",
+                "772,500",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "197,929,503",  # row[11] 自營商買賣超合計 (應略過)
+                "6,766,000",
+                "7,539,000",
+                "-773,000",
+                "238,122,026",
+                "39,419,523",
+                "198,702,503",
+                "198,702,003",  # row[18] 三大法人買賣超合計 (應略過)
+            ]
+        ],
+    }
+    mock_session = MagicMock()
+    mock_response = MagicMock()
+    mock_response.json.return_value = sample_json
+    mock_session.request.return_value = mock_response
+
+    client = TwseClient(session=mock_session, sleep_range=(0.0, 0.0))
+    data = client.get_institutional_investors(date="2026-11-06")
+
+    assert isinstance(data, list)
+    assert len(data) == 1
+    assert data[0] == {
+        "symbol": "00632R",
+        "name": "元大台灣50反1",
+        "date": "2026-11-06",
+        "foreign_buy": 11931500,
+        "foreign_sell": 11159000,
+        "foreign_dealer_buy": 0,
+        "foreign_dealer_sell": 0,
+        "trust_buy": 0,
+        "trust_sell": 0,
+        "dealer_self_buy": 6766000,
+        "dealer_self_sell": 7539000,
+        "dealer_hedge_buy": 238122026,
+        "dealer_hedge_sell": 39419523,
+    }
+
+
 def test_twse_client_error_handler_invalid_params_and_retries():
     """驗證 TwseClient 的參數檢查與 HTTP 失敗重試 (Error Handler) 行為。"""
     mock_session = MagicMock()
@@ -103,10 +159,11 @@ def test_twse_client_error_handler_invalid_params_and_retries():
         client.get_stock_price(symbol="2330", date="20261028")
     with pytest.raises(ValueError):
         client.get_stock_price(symbol="   ", date="2026-10-28")
+    with pytest.raises(ValueError):
+        client.get_institutional_investors(date="2026/11/06")
 
     # 3. 連線錯誤應重試 max_retries (3) 次後拋出例外
     with pytest.raises(RuntimeError, match="Connection timeout"):
         client.get_stock_price(symbol="2330", date="2026-10-28")
 
     assert mock_session.request.call_count == 3
-
