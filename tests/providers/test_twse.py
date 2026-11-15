@@ -140,6 +140,148 @@ def test_twse_get_institutional_investors_returns_cleaned_list_of_dicts():
     }
 
 
+def test_twse_get_margin_trading_merges_margin_and_sbl_in_shares():
+    """
+    驗證 TwseClient.get_margin_trading()：
+    1. 正確解析 MI_MARGN (tables[1]['data']，張轉股 * 1000) 與 TWT93U (data，單位為股)
+    2. 涵蓋 2026-11-13 TPK-KY (3673) 驗證案例 (融資餘額 15,831 張、融券餘額 118 張、借券賣出餘額 24,067 張 -> 統一轉為股)
+    3. 支援 Outer Join (僅出現在 TWT93U 的標的) 並過濾 '合計' 彙總列與休市空資料
+    """
+    sample_mi_margn = {
+        "stat": "OK",
+        "date": "20261113",
+        "tables": [
+            {"title": "信用交易統計", "data": []},
+            {
+                "title": "融資融券彙總",
+                "data": [
+                    [
+                        "3673  ",
+                        "TPK-KY ",
+                        "512",       # [2] 融資買進(張)
+                        "630",       # [3] 融資賣出(張)
+                        "10",        # [4] 融資現金償還(張)
+                        "15,959",    # [5] 融資前日餘額(張)
+                        "15,831",    # [6] 融資今日餘額(張) -> 15,831,000 股
+                        "101,665",   # [7] 融資限額(張)
+                        "25",        # [8] 融券買進(張)
+                        "18",        # [9] 融券賣出(張)
+                        "0",         # [10] 融券現券償還(張)
+                        "125",       # [11] 融券前日餘額(張)
+                        "118",       # [12] 融券今日餘額(張) -> 118,000 股
+                        "101,665",   # [13] 融券限額(張)
+                        "5",         # [14] 資券互抵(張)
+                        "",          # [15] 註記
+                    ]
+                ],
+            },
+        ],
+    }
+    sample_twt93u = {
+        "stat": "OK",
+        "date": "20261113",
+        "data": [
+            [
+                "3673",
+                "TPK-KY",
+                "125,000",     # [2] 融券前日餘額(股)
+                "18,000",      # [3] 融券賣出(股)
+                "25,000",      # [4] 融券買進(股)
+                "0",           # [5] 融券現券(股)
+                "118,000",     # [6] 融券今日餘額(股)
+                "101,665,000", # [7] 融券限額(股)
+                "24,100,000",  # [8] 借券賣出前日餘額(股)
+                "167,000",     # [9] 借券賣出當日賣出(股)
+                "200,000",     # [10] 借券賣出當日還券(股)
+                "-",           # [11] 借券賣出當日調整(股) -> 0
+                "24,067,000",  # [12] 借券賣出當日餘額(股)
+                "40,666,000",  # [13] 借券賣出次一營業日可限額(股)
+                "",            # [14] 備註
+            ],
+            [
+                "0056",
+                "元大高股息",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "0",
+                "5,000,000",
+                "100,000",
+                "50,000",
+                "0",
+                "5,050,000",
+                "10,000,000",
+                "",
+            ],
+            [
+                "合計",
+                "",
+                "125,000",
+                "18,000",
+                "25,000",
+                "0",
+                "118,000",
+                "101,665,000",
+                "29,100,000",
+                "267,000",
+                "250,000",
+                "0",
+                "29,117,000",
+                "50,666,000",
+                "",
+            ],
+        ],
+    }
+
+    mock_session = MagicMock()
+    resp_margin = MagicMock()
+    resp_margin.json.return_value = sample_mi_margn
+    resp_sbl = MagicMock()
+    resp_sbl.json.return_value = sample_twt93u
+    mock_session.request.side_effect = [resp_margin, resp_sbl]
+
+    client = TwseClient(session=mock_session, sleep_range=(0.0, 0.0))
+    data = client.get_margin_trading(date="2026-11-13")
+
+    assert len(data) == 2
+    assert data[0] == {
+        "symbol": "3673",
+        "name": "TPK-KY",
+        "date": "2026-11-13",
+        "margin_buy": 512000,
+        "margin_sell": 630000,
+        "margin_cash_repay": 10000,
+        "margin_prev_balance": 15959000,
+        "margin_balance": 15831000,
+        "margin_limit": 101665000,
+        "short_buy": 25000,
+        "short_sell": 18000,
+        "short_stock_repay": 0,
+        "short_prev_balance": 125000,
+        "short_balance": 118000,
+        "short_limit": 101665000,
+        "offset": 5000,
+        "sbl_prev_balance": 24100000,
+        "sbl_sell": 167000,
+        "sbl_repay": 200000,
+        "sbl_adjust": 0,
+        "sbl_balance": 24067000,
+        "sbl_limit": 40666000,
+    }
+    # 0056 僅出現在 TWT93U (Outer Join 補齊)
+    assert data[1]["symbol"] == "0056"
+    assert data[1]["margin_balance"] == 0
+    assert data[1]["sbl_balance"] == 5050000
+
+    # 休市空資料應安全回傳空清單
+    resp_closed = MagicMock()
+    resp_closed.json.return_value = {"stat": "很抱歉，沒有符合條件的資料!"}
+    mock_session.request.side_effect = [resp_closed, resp_closed]
+    assert client.get_margin_trading(date="2026-11-14") == []
+
+
 def test_twse_client_error_handler_invalid_params_and_retries():
     """驗證 TwseClient 的參數檢查與 HTTP 失敗重試 (Error Handler) 行為。"""
     mock_session = MagicMock()
@@ -161,6 +303,8 @@ def test_twse_client_error_handler_invalid_params_and_retries():
         client.get_stock_price(symbol="   ", date="2026-10-28")
     with pytest.raises(ValueError):
         client.get_institutional_investors(date="2026/11/06")
+    with pytest.raises(ValueError):
+        client.get_margin_trading(date="2026/11/13")
 
     # 3. 連線錯誤應重試 max_retries (3) 次後拋出例外
     with pytest.raises(RuntimeError, match="Connection timeout"):

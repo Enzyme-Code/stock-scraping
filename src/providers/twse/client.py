@@ -51,3 +51,15 @@ class Client(Base):
             清洗後的三大法人買賣超明細 list[dict]。
         """
         return self._get_institutional_investors(date=date)
+
+    def get_margin_trading(self, date: str) -> List[Dict[str, Any]]:
+        """
+        取得指定日期的上市融資融券彙總 (MI_MARGN) 與融券借券賣出餘額 (TWT93U) 合併明細。
+
+        Args:
+            date: 查詢日期字串，強制使用 ISO 格式 'YYYY-MM-DD' (例如 '2026-11-13')。
+
+        Returns:
+            清洗並以代號 Outer Join 合併後的融資融券與借券賣出明細 list[dict] (單位統一為「股」)。
+        """
+        return self._get_margin_trading(date=date)

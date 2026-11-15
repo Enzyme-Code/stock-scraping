@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from curl_cffi import requests
 
 from ..handler.base import BaseProvider
-from ..handler.model import InstitutionalInvestorItem, StockPriceItem
+from ..handler.model import InstitutionalInvestorItem, MarginTradingItem, StockPriceItem
 from ..utils import clean_text, format_iso_date, split_symbol_name, to_float, to_int, to_iso_date
 from .model import (
     MarketLiteral,
@@ -19,6 +19,8 @@ class Base(BaseProvider):
     ISIN_URL: str = "https://isin.twse.com.tw/isin/C_public.jsp"
     STOCK_DAY_URL: str = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
     INSTI_T86_URL: str = "https://www.twse.com.tw/rwd/zh/fund/T86"
+    MARGIN_MI_MARGN_URL: str = "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN"
+    MARGIN_TWT93U_URL: str = "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
 
     def _request(self, method: str, url: str, **kwargs) -> requests.Response:
         """發送帶有自動重試、User-Agent 輪替與延遲等待的 HTTP 請求。"""
@@ -268,3 +270,181 @@ class Base(BaseProvider):
         iso_date = format_iso_date(date, "%Y-%m-%d")
         raw_json = self._fetch_institutional_investors_json(query_date=query_date)
         return self._parse_institutional_investors(data=raw_json, iso_date=iso_date)
+
+    def _fetch_margin_trading_json(self, query_date: str) -> Dict[str, Any]:
+        """發送 GET 請求至 TWSE MI_MARGN API 取得指定日期的融資融券彙總 JSON。"""
+        params = {
+            "date": query_date,
+            "selectType": "ALL",
+            "response": "json",
+        }
+        response = self._request("GET", self.MARGIN_MI_MARGN_URL, params=params)
+        return response.json()
+
+    def _fetch_sbl_json(self, query_date: str) -> Dict[str, Any]:
+        """發送 GET 請求至 TWSE TWT93U API 取得指定日期的融券借券賣出餘額 JSON。"""
+        params = {
+            "date": query_date,
+            "response": "json",
+        }
+        response = self._request("GET", self.MARGIN_TWT93U_URL, params=params)
+        return response.json()
+
+    def _parse_margin_table(self, data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """
+        解析 TWSE MI_MARGN JSON 的個股融資融券明細 (tables[1]['data'])。
+        原始單位為「張」，統一乘以 1,000 換算為「股」。
+        """
+        if data.get("stat") != "OK":
+            return {}
+
+        tables = data.get("tables")
+        if not isinstance(tables, list) or len(tables) < 2:
+            return {}
+
+        detail_table = tables[1]
+        if not isinstance(detail_table, dict):
+            return {}
+
+        rows = detail_table.get("data")
+        if not isinstance(rows, list):
+            return {}
+
+        margin_map: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 15:
+                continue
+
+            symbol = clean_text(row[0])
+            name = clean_text(row[1])
+            if not symbol or "合計" in symbol or "總計" in symbol or "合計" in name:
+                continue
+
+            margin_map[symbol] = {
+                "name": name,
+                "margin_buy": to_int(row[2], multiplier=1000) or 0,
+                "margin_sell": to_int(row[3], multiplier=1000) or 0,
+                "margin_cash_repay": to_int(row[4], multiplier=1000) or 0,
+                "margin_prev_balance": to_int(row[5], multiplier=1000) or 0,
+                "margin_balance": to_int(row[6], multiplier=1000) or 0,
+                "margin_limit": to_int(row[7], multiplier=1000) or 0,
+                "short_buy": to_int(row[8], multiplier=1000) or 0,
+                "short_sell": to_int(row[9], multiplier=1000) or 0,
+                "short_stock_repay": to_int(row[10], multiplier=1000) or 0,
+                "short_prev_balance": to_int(row[11], multiplier=1000) or 0,
+                "short_balance": to_int(row[12], multiplier=1000) or 0,
+                "short_limit": to_int(row[13], multiplier=1000) or 0,
+                "offset": to_int(row[14], multiplier=1000) or 0,
+            }
+
+        return margin_map
+
+    def _parse_sbl_table(self, data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """
+        解析 TWSE TWT93U JSON 的個股融券借券賣出明細 (data)。
+        原始單位即為「股」，不需額外換算。
+        """
+        if data.get("stat") != "OK":
+            return {}
+
+        rows = data.get("data")
+        if not isinstance(rows, list):
+            tables = data.get("tables")
+            if isinstance(tables, list) and tables and isinstance(tables[0], dict):
+                rows = tables[0].get("data")
+        if not isinstance(rows, list):
+            return {}
+
+        sbl_map: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 14:
+                continue
+
+            symbol = clean_text(row[0])
+            name = clean_text(row[1])
+            if not symbol or "合計" in symbol or "總計" in symbol or "合計" in name:
+                continue
+
+            sbl_map[symbol] = {
+                "name": name,
+                "short_prev_balance": to_int(row[2]) or 0,
+                "short_sell": to_int(row[3]) or 0,
+                "short_buy": to_int(row[4]) or 0,
+                "short_stock_repay": to_int(row[5]) or 0,
+                "short_balance": to_int(row[6]) or 0,
+                "short_limit": to_int(row[7]) or 0,
+                "sbl_prev_balance": to_int(row[8]) or 0,
+                "sbl_sell": to_int(row[9]) or 0,
+                "sbl_repay": to_int(row[10]) or 0,
+                "sbl_adjust": to_int(row[11]) or 0,
+                "sbl_balance": to_int(row[12]) or 0,
+                "sbl_limit": to_int(row[13]) or 0,
+            }
+
+        return sbl_map
+
+    def _merge_margin_and_sbl(
+        self,
+        margin_map: Dict[str, Dict[str, Any]],
+        sbl_map: Dict[str, Dict[str, Any]],
+        iso_date: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        以 symbol 進行融資融券表與借券賣出表的 Outer Join：
+        - 融券相關欄位優先取自融資融券表 (margin_map)，若無信用交易資格則由借券賣出表 (sbl_map) 補齊。
+        - 借券賣出相關欄位取自借券賣出表 (sbl_map)。
+        """
+        all_symbols = list(dict.fromkeys(list(margin_map.keys()) + list(sbl_map.keys())))
+        results: List[Dict[str, Any]] = []
+
+        for symbol in all_symbols:
+            m = margin_map.get(symbol)
+            s = sbl_map.get(symbol)
+            short_src = m if m is not None else (s or {})
+
+            name = (m["name"] if m and m.get("name") else (s["name"] if s else "")) or ""
+
+            item = MarginTradingItem(
+                symbol=symbol,
+                name=name,
+                date=iso_date,
+                margin_buy=m["margin_buy"] if m else 0,
+                margin_sell=m["margin_sell"] if m else 0,
+                margin_cash_repay=m["margin_cash_repay"] if m else 0,
+                margin_prev_balance=m["margin_prev_balance"] if m else 0,
+                margin_balance=m["margin_balance"] if m else 0,
+                margin_limit=m["margin_limit"] if m else 0,
+                short_buy=short_src.get("short_buy", 0),
+                short_sell=short_src.get("short_sell", 0),
+                short_stock_repay=short_src.get("short_stock_repay", 0),
+                short_prev_balance=short_src.get("short_prev_balance", 0),
+                short_balance=short_src.get("short_balance", 0),
+                short_limit=short_src.get("short_limit", 0),
+                offset=m["offset"] if m else 0,
+                sbl_prev_balance=s["sbl_prev_balance"] if s else 0,
+                sbl_sell=s["sbl_sell"] if s else 0,
+                sbl_repay=s["sbl_repay"] if s else 0,
+                sbl_adjust=s["sbl_adjust"] if s else 0,
+                sbl_balance=s["sbl_balance"] if s else 0,
+                sbl_limit=s["sbl_limit"] if s else 0,
+            )
+            results.append(item.to_dict())
+
+        return results
+
+    def _get_margin_trading(self, date: str) -> List[Dict[str, Any]]:
+        """抓取並合併指定交易日的上市融資融券 (MI_MARGN) 與借券賣出 (TWT93U) 明細。"""
+        query_date = format_iso_date(date, "%Y%m%d")
+        iso_date = format_iso_date(date, "%Y-%m-%d")
+
+        margin_json = self._fetch_margin_trading_json(query_date=query_date)
+        sbl_json = self._fetch_sbl_json(query_date=query_date)
+
+        margin_map = self._parse_margin_table(data=margin_json)
+        sbl_map = self._parse_sbl_table(data=sbl_json)
+
+        return self._merge_margin_and_sbl(
+            margin_map=margin_map,
+            sbl_map=sbl_map,
+            iso_date=iso_date,
+        )

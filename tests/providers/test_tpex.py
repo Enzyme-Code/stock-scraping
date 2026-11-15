@@ -130,6 +130,136 @@ def test_tpex_get_institutional_investors_returns_cleaned_list_of_dicts():
     }
 
 
+def test_tpex_get_margin_trading_handles_column_order_and_mixed_units():
+    """
+    驗證 TpexClient.get_margin_trading()：
+    1. margin/balance：全表單位為「張」(* 1000 轉股)，且注意 row[11] 為「券賣」、row[12] 為「券買」
+    2. margin/sbl：同一列內單位混用 (row[2..7] 融券為「張」* 1000，row[8..13] 借券賣出為「股」* 1)
+    3. 支援 Outer Join 合併、過濾 '合計' 彙總列與休市空資料處理
+    """
+    sample_balance = {
+        "tables": [
+            {
+                "title": "上櫃股票融資融券餘額",
+                "date": "115/11/13",
+                "data": [
+                    [
+                        "6488 ",
+                        "環球晶 ",
+                        "3,200",   # [2] 前資餘額(張)
+                        "150",     # [3] 資買(張)
+                        "100",     # [4] 資賣(張)
+                        "10",      # [5] 現償(張)
+                        "3,240",   # [6] 資餘額(張)
+                        "0",       # [7] 資屬證金
+                        "2.95",    # [8] 資使用率(%)
+                        "109,500", # [9] 資限額(張)
+                        "200",     # [10] 前券餘額(張)
+                        "45",      # [11] 券賣(張) -> short_sell = 45,000
+                        "30",      # [12] 券買(張) -> short_buy = 30,000
+                        "5",       # [13] 券償(張)
+                        "210",     # [14] 券餘額(張)
+                        "0",       # [15] 券屬證金
+                        "0.19",    # [16] 券使用率(%)
+                        "109,500", # [17] 券限額(張)
+                        "8",       # [18] 資券互抵(張)
+                    ]
+                ],
+            }
+        ]
+    }
+    sample_sbl = {
+        "tables": [
+            {
+                "title": "上櫃股票融券借券賣出餘額",
+                "date": "115/11/13",
+                "data": [
+                    [
+                        "6488",
+                        "環球晶",
+                        "200",        # [2] 融券前日餘額(張)
+                        "45",         # [3] 融券賣出(張)
+                        "30",         # [4] 融券買進(張)
+                        "5",          # [5] 融券現券(張)
+                        "210",        # [6] 融券今日餘額(張)
+                        "109,500",    # [7] 融券限額(張)
+                        "6,500,000",  # [8] 借券賣出前日餘額(股)
+                        "120,000",    # [9] 借券賣出當日賣出(股)
+                        "80,000",     # [10] 借券賣出當日還券(股)
+                        "--",         # [11] 借券賣出當日調整(股) -> 0
+                        "6,540,000",  # [12] 借券賣出當日餘額(股)
+                        "43,800,000", # [13] 借券賣出次一營業日可限額(股)
+                        "",           # [14] 備註
+                    ],
+                    [
+                        "8069",
+                        "元太",
+                        "10",         # [2] 僅在 SBL 表出現時，融券單位為「張」(* 1000)
+                        "2",          # [3] 融券賣出(張)
+                        "1",          # [4] 融券買進(張)
+                        "0",          # [5] 融券現券(張)
+                        "11",         # [6] 融券今日餘額(張)
+                        "50,000",     # [7] 融券限額(張)
+                        "1,200,000",  # [8] 借券賣出前日餘額(股)
+                        "30,000",     # [9]
+                        "10,000",     # [10]
+                        "0",          # [11]
+                        "1,220,000",  # [12]
+                        "20,000,000", # [13]
+                        "",
+                    ],
+                ],
+            }
+        ]
+    }
+
+    mock_session = MagicMock()
+    resp_balance = MagicMock()
+    resp_balance.json.return_value = sample_balance
+    resp_sbl = MagicMock()
+    resp_sbl.json.return_value = sample_sbl
+    mock_session.request.side_effect = [resp_balance, resp_sbl]
+
+    client = TpexClient(session=mock_session, sleep_range=(0.0, 0.0))
+    data = client.get_margin_trading(date="2026-11-13")
+
+    assert len(data) == 2
+    assert data[0] == {
+        "symbol": "6488",
+        "name": "環球晶",
+        "date": "2026-11-13",
+        "margin_buy": 150000,
+        "margin_sell": 100000,
+        "margin_cash_repay": 10000,
+        "margin_prev_balance": 3200000,
+        "margin_balance": 3240000,
+        "margin_limit": 109500000,
+        "short_buy": 30000,
+        "short_sell": 45000,
+        "short_stock_repay": 5000,
+        "short_prev_balance": 200000,
+        "short_balance": 210000,
+        "short_limit": 109500000,
+        "offset": 8000,
+        "sbl_prev_balance": 6500000,
+        "sbl_sell": 120000,
+        "sbl_repay": 80000,
+        "sbl_adjust": 0,
+        "sbl_balance": 6540000,
+        "sbl_limit": 43800000,
+    }
+    # 8069 僅出現在 SBL 表：融券欄位已由「張」乘以 1000 轉為「股」，借券欄位保持「股」
+    assert data[1]["symbol"] == "8069"
+    assert data[1]["short_balance"] == 11000
+    assert data[1]["sbl_balance"] == 1220000
+
+    # 休市空資料應安全回傳空清單
+    resp_empty = MagicMock()
+    resp_empty.json.return_value = {"tables": [{"data": []}]}
+    mock_session.request.side_effect = [resp_empty, resp_empty]
+    assert client.get_margin_trading(date="2026-11-14") == []
+
+
 def test_tpex_client_error_handler_invalid_params_and_retries():
     """驗證 TpexClient 的參數檢查與 HTTP 失敗重試 (Error Handler) 行為。"""
     mock_session = MagicMock()
@@ -147,6 +277,8 @@ def test_tpex_client_error_handler_invalid_params_and_retries():
         client.get_stock_price(symbol="", date="2026-10-01")
     with pytest.raises(ValueError):
         client.get_institutional_investors(date="20261106")
+    with pytest.raises(ValueError):
+        client.get_margin_trading(date="2026/11/13")
 
     # 2. 連線失敗應重試 3 次並輪替 User-Agent 後拋出例外
     with pytest.raises(RuntimeError, match="TPEx network error"):
