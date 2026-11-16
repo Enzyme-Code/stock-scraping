@@ -77,6 +77,17 @@ DATE_FIELDS: Set[str] = {
     "approvedDate",
 }
 
+# 需要去除單位並轉為 int 的數值欄位 (API 原始 key)
+INT_FIELDS: Set[str] = {
+    "capitalAmount",
+    "specialStockAmount",
+}
+
+# 需要去除幣別/單位並轉為 float 的數值欄位 (API 原始 key)
+FLOAT_FIELDS: Set[str] = {
+    "commonStockPrice",
+}
+
 
 @dataclass
 class MopsCompanyInfo(BaseModel):
@@ -110,10 +121,11 @@ class MopsCompanyInfo(BaseModel):
     fax_number: Optional[str] = None                      # 傳真機號碼
     email: Optional[str] = None                           # 電子郵件信箱
     internet_address: Optional[str] = None                # 公司網址
-    capital_amount: Optional[str] = None                  # 實收資本額 (例如 '259,323,700,670元')
-    common_stock_price: Optional[str] = None              # 普通股每股面額 (例如 '新台幣 10.0000元')
-    common_stock_amount: Optional[str] = None             # 已發行普通股數或TDR原股發行股數
-    special_stock_amount: Optional[str] = None            # 特別股股數 (例如 '0股')
+    capital_amount: Optional[int] = None                  # 實收資本額 (單位: 新台幣元，例如 4066637590)
+    common_stock_price: Optional[float] = None            # 普通股每股面額 (單位: 新台幣元，例如 10.0)
+    common_stock_amount: Optional[int] = None             # 已發行普通股數或TDR原股發行股數 (單位: 股，例如 406663759)
+    private_stock_amount: Optional[int] = None            # 普通股私募股數 (單位: 股，例如 0)
+    special_stock_amount: Optional[int] = None            # 特別股股數 (單位: 股，例如 0)
     have_special_stock: Optional[bool] = None             # 是否發行特別股
     have_company_bonds: Optional[bool] = None             # 普通股盈餘分派或虧損撥補頻率/是否發行公司債
     common_stock_distribute: Optional[str] = None         # 普通股盈餘分派或虧損撥補頻率 (例如 '每季' / '每年')
