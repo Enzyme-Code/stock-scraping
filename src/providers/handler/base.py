@@ -101,3 +101,26 @@ class BaseProvider(ABC):
             )
             time.sleep(delay)
         return delay
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
+        """發送帶有自動重試、User-Agent 輪替與延遲等待的 HTTP 請求。"""
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                self._debug(f"{method.upper()} {url} (attempt {attempt}/{self.max_retries})")
+                response = self.session.request(
+                    method=method,
+                    url=url,
+                    timeout=self.timeout,
+                    **kwargs,
+                )
+                response.raise_for_status()
+                self._sleep()
+                return response
+            except Exception as exc:
+                self._debug(f"Request failed on attempt {attempt}: {exc}")
+                if attempt == self.max_retries:
+                    raise
+                self._rotate_user_agent()
+                self._retry_sleep(attempt)
+
+        raise RuntimeError(f"Unreachable retry state for {url}")
