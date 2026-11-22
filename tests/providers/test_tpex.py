@@ -260,6 +260,111 @@ def test_tpex_get_margin_trading_handles_column_order_and_mixed_units():
     assert client.get_margin_trading(date="2026-11-14") == []
 
 
+def test_tpex_get_exright_announcements_and_stock_dividend():
+    """
+    驗證 TpexClient.get_exright_announcements() 與 get_stock_dividend()：
+    1. 正確將民國斜線日期 ('115/11/20', '115/07/01') 轉為 ISO 格式 ('2026-11-20', '2026-07-01')
+    2. 將櫃買中心 '除息' / '除權' / '除權息' 統一正規化為 '息' / '權' / '權息'
+    3. 結果表正確提取索引 7 的 '權值+息值' 及價格欄位
+    """
+    sample_prepost = {
+        "tables": [
+            {
+                "data": [
+                    [
+                        "115/11/20",
+                        "006201",
+                        "元大富櫃50",
+                        "除息",
+                        "0.00000000",
+                        "0.00000000",
+                        "0.00",
+                        "0.90000000",
+                        "0",
+                        "0",
+                        "0",
+                        "0.00000000",
+                        "",
+                    ]
+                ]
+            }
+        ],
+        "stat": "ok",
+    }
+    sample_ex_daily = {
+        "tables": [
+            {
+                "data": [
+                    [
+                        "115/07/01",
+                        "2230",
+                        "泰茂              ",
+                        "25.55",
+                        "24.94",
+                        "0.000000",
+                        "0.608951",
+                        "0.608951",
+                        "除息",
+                        "27.40",
+                        "22.45",
+                        "24.95",
+                        "24.94",
+                        "0.60895126",
+                        "0.00000000",
+                        "0",
+                        "0.00",
+                        "0",
+                        "0",
+                        "0",
+                        "0.00000000",
+                    ]
+                ]
+            }
+        ],
+        "stat": "ok",
+    }
+
+    mock_session = MagicMock()
+    resp_prepost = MagicMock()
+    resp_prepost.json.return_value = sample_prepost
+    resp_daily = MagicMock()
+    resp_daily.json.return_value = sample_ex_daily
+    mock_session.request.side_effect = [resp_prepost, resp_daily]
+
+    client = TpexClient(session=mock_session, sleep_range=(0.0, 0.0))
+
+    announcements = client.get_exright_announcements()
+    assert len(announcements) == 1
+    assert announcements[0] == {
+        "symbol": "006201",
+        "name": "元大富櫃50",
+        "date": "2026-11-20",
+        "ex_type": "息",
+        "stock_dividend_ratio": 0.0,
+        "cash_increase_ratio": 0.0,
+        "subscription_price": 0.0,
+        "cash_dividend": 0.9,
+    }
+
+    results = client.get_stock_dividend(
+        start_date="2026-07-01", end_date="2026-07-15"
+    )
+    assert len(results) == 1
+    assert results[0] == {
+        "symbol": "2230",
+        "name": "泰茂",
+        "date": "2026-07-01",
+        "ex_type": "息",
+        "before_close": 25.55,
+        "reference_price": 24.94,
+        "right_and_dividend_value": 0.608951,
+        "limit_up": 27.4,
+        "limit_down": 22.45,
+        "opening_reference_price": 24.95,
+        "ex_dividend_reference_price": 24.94,
+    }
+
+
 def test_tpex_client_error_handler_invalid_params_and_retries():
     """驗證 TpexClient 的參數檢查與 HTTP 失敗重試 (Error Handler) 行為。"""
     mock_session = MagicMock()
@@ -279,6 +384,8 @@ def test_tpex_client_error_handler_invalid_params_and_retries():
         client.get_institutional_investors(date="20261106")
     with pytest.raises(ValueError):
         client.get_margin_trading(date="2026/11/13")
+    with pytest.raises(ValueError):
+        client.get_stock_dividend(start_date="2026-07-10", end_date="2026-07-01")
 
     # 2. 連線失敗應重試 3 次並輪替 User-Agent 後拋出例外
     with pytest.raises(RuntimeError, match="TPEx network error"):
