@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -72,3 +72,34 @@ class MarginTradingItem(BaseModel):
     sbl_adjust: int            # 借券賣出當日調整股數 (單位: 股)
     sbl_balance: int           # 借券賣出當日餘額股數 (單位: 股)
     sbl_limit: int             # 借券賣出次一營業日可借券賣出限額股數 (單位: 股)
+
+
+@dataclass
+class ExRightAnnouncementItem(BaseModel):
+    """跨市場共用（上市 TWSE TWT48U / 上櫃 TPEx prePost）的除權除息預告表資料模型。"""
+
+    symbol: str                            # 證券代號 (例如 '0051', '006201')
+    name: str                              # 證券名稱 (例如 '元大中型100', '元大富櫃50')
+    date: str                              # 除權除息日期 (ISO 格式: YYYY-MM-DD)
+    ex_type: str                           # 除權息類別 (統一正規化為 '息' / '權' / '權息')
+    stock_dividend_ratio: Optional[float]  # 無償配股率
+    cash_increase_ratio: Optional[float]   # 現金增資配股率
+    subscription_price: Optional[float]    # 現金增資認購價 (單位: 元)
+    cash_dividend: Optional[float]         # 現金股利 (單位: 元/股；若為「待公告...」則為 None)
+
+
+@dataclass
+class ExRightResultItem(BaseModel):
+    """跨市場共用（上市 TWSE TWT49U / 上櫃 TPEx exDailyQ）的除權除息計算結果表資料模型。"""
+
+    symbol: str                         # 證券代號 (例如 '1101', '2230')
+    name: str                           # 證券名稱 (例如 '台泥', '泰茂')
+    date: str                           # 除權除息日期 (ISO 格式: YYYY-MM-DD)
+    ex_type: str                        # 除權息類別 (統一正規化為 '息' / '權' / '權息')
+    before_close: float                 # 除權息前收盤價 (單位: 元)
+    reference_price: float              # 除權息參考價 (單位: 元)
+    right_and_dividend_value: float     # 權值+息值 (單位: 元)
+    limit_up: float                     # 漲停價格 (單位: 元)
+    limit_down: float                   # 跌停價格 (單位: 元)
+    opening_reference_price: float      # 開盤競價基準 / 開始交易基準價 (單位: 元)
+    ex_dividend_reference_price: float  # 減除股利參考價 (單位: 元)

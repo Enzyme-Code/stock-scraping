@@ -282,6 +282,113 @@ def test_twse_get_margin_trading_merges_margin_and_sbl_in_shares():
     assert client.get_margin_trading(date="2026-11-14") == []
 
 
+def test_twse_get_exright_announcements_and_stock_dividend():
+    """
+    驗證 TwseClient.get_exright_announcements() 與 get_stock_dividend()：
+    1. 正確將民國中文日期 ('115年11月20日', '115年07月01日') 轉為 ISO 格式 ('2026-11-20', '2026-07-01')
+    2. 預告表中若現金股利為 HTML '<p ...>待公告實際收益分配金額</p>' 能安全轉為 None
+    3. 結果表正確轉換價格與權息值並支援 start_date / end_date 查詢
+    """
+    sample_twt48u = {
+        "stat": "OK",
+        "data": [
+            [
+                "115年12月02日",
+                "00406A",
+                "主動中信台灣收益",
+                "息",
+                "0.00000000",
+                "0.00000000",
+                "0.00000000",
+                "<p style= text-align:center;>待公告實際收益分配金額</p>",
+                "00406A,20261202",
+                "",
+                "",
+                "0.00",
+                "",
+            ],
+            [
+                "115年11月20日",
+                "0051",
+                "元大中型100",
+                "息",
+                "0.00000000",
+                "0.00000000",
+                "0.00000000",
+                "4.50000000",
+                "0051,20261120",
+                ",4.50000000,0.00000000,0.00000000,0.00000000",
+                "115年11月20日",
+                "104.73",
+                "N/A",
+            ],
+        ],
+    }
+    sample_twt49u = {
+        "stat": "OK",
+        "data": [
+            [
+                "115年07月01日",
+                "1101",
+                "台泥",
+                "24.05",
+                "23.25",
+                "0.800000",
+                "息",
+                "25.55",
+                "20.95",
+                "23.25",
+                "23.25",
+                "1101,20260701",
+                "115年第3季",
+                "31.24",
+                "0.63",
+            ]
+        ],
+    }
+
+    mock_session = MagicMock()
+    resp_48u = MagicMock()
+    resp_48u.json.return_value = sample_twt48u
+    resp_49u = MagicMock()
+    resp_49u.json.return_value = sample_twt49u
+    mock_session.request.side_effect = [resp_48u, resp_49u]
+
+    client = TwseClient(session=mock_session, sleep_range=(0.0, 0.0))
+
+    announcements = client.get_exright_announcements()
+    assert len(announcements) == 2
+    assert announcements[0] == {
+        "symbol": "00406A",
+        "name": "主動中信台灣收益",
+        "date": "2026-12-02",
+        "ex_type": "息",
+        "stock_dividend_ratio": 0.0,
+        "cash_increase_ratio": 0.0,
+        "subscription_price": 0.0,
+        "cash_dividend": None,
+    }
+    assert announcements[1]["symbol"] == "0051"
+    assert announcements[1]["date"] == "2026-11-20"
+    assert announcements[1]["cash_dividend"] == 4.5
+
+    results = client.get_stock_dividend(start_date="2026-07-01")
+    assert len(results) == 1
+    assert results[0] == {
+        "symbol": "1101",
+        "name": "台泥",
+        "date": "2026-07-01",
+        "ex_type": "息",
+        "before_close": 24.05,
+        "reference_price": 23.25,
+        "right_and_dividend_value": 0.8,
+        "limit_up": 25.55,
+        "limit_down": 20.95,
+        "opening_reference_price": 23.25,
+        "ex_dividend_reference_price": 23.25,
+    }
+
+
 def test_twse_client_error_handler_invalid_params_and_retries():
     """驗證 TwseClient 的參數檢查與 HTTP 失敗重試 (Error Handler) 行為。"""
     mock_session = MagicMock()
@@ -305,6 +412,8 @@ def test_twse_client_error_handler_invalid_params_and_retries():
         client.get_institutional_investors(date="2026/11/06")
     with pytest.raises(ValueError):
         client.get_margin_trading(date="2026/11/13")
+    with pytest.raises(ValueError):
+        client.get_stock_dividend(start_date="2026-07-10", end_date="2026-07-01")
 
     # 3. 連線錯誤應重試 max_retries (3) 次後拋出例外
     with pytest.raises(RuntimeError, match="Connection timeout"):

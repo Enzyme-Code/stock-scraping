@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .base import Base
 from .model import MarketLiteral
@@ -63,3 +63,27 @@ class Client(Base):
             清洗並以代號 Outer Join 合併後的融資融券與借券賣出明細 list[dict] (單位統一為「股」)。
         """
         return self._get_margin_trading(date=date)
+
+    def get_exright_announcements(self) -> List[Dict[str, Any]]:
+        """
+        取得上市除權除息預告表 (TWT48U)。
+
+        Returns:
+            清洗後的上市除權除息預告明細 list[dict]。
+        """
+        return self._get_exright_announcements()
+
+    def get_stock_dividend(
+        self, start_date: str, end_date: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        取得指定日期（或日期區間）的上市除權除息計算結果表 (TWT49U)。
+
+        Args:
+            start_date: 起始日期字串，強制使用 ISO 格式 'YYYY-MM-DD' (例如 '2026-07-01')。
+            end_date: 結束日期字串，強制使用 ISO 格式 'YYYY-MM-DD'；若未傳入則預設與 start_date 相同。
+
+        Returns:
+            清洗後的上市除權除息計算結果明細 list[dict]。
+        """
+        return self._get_stock_dividend(start_date=start_date, end_date=end_date)

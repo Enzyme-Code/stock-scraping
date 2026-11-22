@@ -1,12 +1,18 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from bs4 import BeautifulSoup
 
 from ..handler.base import BaseProvider
-from ..handler.model import InstitutionalInvestorItem, StockPriceItem
+from ..handler.model import (
+    ExRightAnnouncementItem,
+    ExRightResultItem,
+    InstitutionalInvestorItem,
+    StockPriceItem,
+)
 from ..utils import (
     clean_text,
     format_iso_date,
     merge_margin_and_sbl,
+    normalize_ex_type,
     split_symbol_name,
     to_float,
     to_int,
@@ -28,6 +34,8 @@ class Base(BaseProvider):
     INSTI_T86_URL: str = "https://www.twse.com.tw/rwd/zh/fund/T86"
     MARGIN_MI_MARGN_URL: str = "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN"
     MARGIN_TWT93U_URL: str = "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
+    EX_RIGHT_TWT48U_URL: str = "https://www.twse.com.tw/rwd/zh/exRight/TWT48U"
+    EX_RIGHT_TWT49U_URL: str = "https://www.twse.com.tw/rwd/zh/exRight/TWT49U"
 
     def _fetch_isin_html(self, str_mode: int) -> str:
         """
@@ -383,3 +391,139 @@ class Base(BaseProvider):
             sbl_map=sbl_map,
             iso_date=iso_date,
         )
+
+    def _fetch_exright_announcements_json(self) -> Dict[str, Any]:
+        """發送 GET 請求至 TWSE TWT48U API 取得除權除息預告表 JSON。"""
+        response = self._request(
+            "GET", self.EX_RIGHT_TWT48U_URL, params={"response": "json"}
+        )
+        return response.json()
+
+    def _parse_exright_announcements(
+        self, data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """解析 TWSE TWT48U 除權除息預告表 JSON 並清洗為 list[dict] 格式。"""
+        if data.get("stat") != "OK":
+            return []
+
+        rows = data.get("data")
+        if not isinstance(rows, list):
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 8:
+                continue
+
+            iso_date = to_iso_date(row[0])
+            symbol = clean_text(row[1])
+            name = clean_text(row[2])
+            ex_type = normalize_ex_type(row[3])
+            if not iso_date or not symbol:
+                continue
+
+            item = ExRightAnnouncementItem(
+                symbol=symbol,
+                name=name,
+                date=iso_date,
+                ex_type=ex_type,
+                stock_dividend_ratio=to_float(row[4]),
+                cash_increase_ratio=to_float(row[5]),
+                subscription_price=to_float(row[6]),
+                cash_dividend=to_float(row[7]),
+            )
+            results.append(item.to_dict())
+
+        return results
+
+    def _get_exright_announcements(self) -> List[Dict[str, Any]]:
+        """抓取並解析上市除權除息預告表 (TWT48U)。"""
+        raw_json = self._fetch_exright_announcements_json()
+        return self._parse_exright_announcements(data=raw_json)
+
+    def _fetch_stock_dividend_json(
+        self, start_date: str, end_date: str
+    ) -> Dict[str, Any]:
+        """發送 GET 請求至 TWSE TWT49U API 取得指定日期區間的除權除息計算結果表 JSON。"""
+        params = {
+            "startDate": start_date,
+            "endDate": end_date,
+            "response": "json",
+        }
+        response = self._request("GET", self.EX_RIGHT_TWT49U_URL, params=params)
+        return response.json()
+
+    def _parse_stock_dividend(
+        self, data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """解析 TWSE TWT49U 除權除息計算結果表 JSON 並清洗為 list[dict] 格式。"""
+        if data.get("stat") != "OK":
+            return []
+
+        rows = data.get("data")
+        if not isinstance(rows, list):
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, list) or len(row) < 11:
+                continue
+
+            iso_date = to_iso_date(row[0])
+            symbol = clean_text(row[1])
+            name = clean_text(row[2])
+            before_close = to_float(row[3])
+            reference_price = to_float(row[4])
+            right_and_dividend_value = to_float(row[5])
+            ex_type = normalize_ex_type(row[6])
+            limit_up = to_float(row[7])
+            limit_down = to_float(row[8])
+            opening_reference_price = to_float(row[9])
+            ex_dividend_reference_price = to_float(row[10])
+
+            if (
+                not iso_date
+                or not symbol
+                or before_close is None
+                or reference_price is None
+                or right_and_dividend_value is None
+                or limit_up is None
+                or limit_down is None
+                or opening_reference_price is None
+                or ex_dividend_reference_price is None
+            ):
+                continue
+
+            item = ExRightResultItem(
+                symbol=symbol,
+                name=name,
+                date=iso_date,
+                ex_type=ex_type,
+                before_close=before_close,
+                reference_price=reference_price,
+                right_and_dividend_value=right_and_dividend_value,
+                limit_up=limit_up,
+                limit_down=limit_down,
+                opening_reference_price=opening_reference_price,
+                ex_dividend_reference_price=ex_dividend_reference_price,
+            )
+            results.append(item.to_dict())
+
+        return results
+
+    def _get_stock_dividend(
+        self, start_date: str, end_date: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """抓取並解析指定日期區間的上市除權除息計算結果表 (TWT49U)。"""
+        target_end = end_date if end_date is not None else start_date
+        q_start = format_iso_date(start_date, "%Y%m%d")
+        q_end = format_iso_date(target_end, "%Y%m%d")
+        if q_start > q_end:
+            raise ValueError(
+                f"start_date '{start_date}' cannot be later than end_date '{target_end}'."
+            )
+
+        raw_json = self._fetch_stock_dividend_json(
+            start_date=q_start, end_date=q_end
+        )
+        return self._parse_stock_dividend(data=raw_json)
