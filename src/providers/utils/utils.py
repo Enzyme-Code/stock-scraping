@@ -57,10 +57,13 @@ def to_iso_date(date_str: Optional[str]) -> Optional[str]:
         except ValueError:
             continue
 
-    # 2. 嘗試民國年格式 (例如 113/02/09 或 98-05-01)
-    roc_match = re.match(r"^(\d{1,3})[/\-.](\d{1,2})[/\-.](\d{1,2})$", cleaned)
+    # 3. 嘗試民國年或中文年月日格式 (例如 113/02/09、98-05-01、115年12月02日)
+    roc_match = re.match(
+        r"^(\d{1,4})(?:[/\-.]|年)(\d{1,2})(?:[/\-.]|月)(\d{1,2})日?$", cleaned
+    )
     if roc_match:
-        year = int(roc_match.group(1)) + 1911
+        raw_year = int(roc_match.group(1))
+        year = raw_year + 1911 if raw_year < 1911 else raw_year
         month = int(roc_match.group(2))
         day = int(roc_match.group(3))
         try:
@@ -103,6 +106,8 @@ def to_int(val: Optional[Union[str, int, float]], multiplier: int = 1) -> Option
         return int(round(val * multiplier))
 
     cleaned = clean_text(str(val)).replace(",", "")
+    if "<" in cleaned and ">" in cleaned:
+        cleaned = clean_text(re.sub(r"<[^>]+>", "", cleaned))
     if not cleaned or cleaned in ("--", "-", "---"):
         return None
 
@@ -124,6 +129,8 @@ def to_float(val: Optional[Union[str, int, float]]) -> Optional[float]:
         return float(val)
 
     cleaned = clean_text(str(val)).replace(",", "")
+    if "<" in cleaned and ">" in cleaned:
+        cleaned = clean_text(re.sub(r"<[^>]+>", "", cleaned))
     if not cleaned or cleaned in ("--", "-", "---"):
         return None
 
@@ -136,6 +143,18 @@ def to_float(val: Optional[Union[str, int, float]]) -> Optional[float]:
         if match:
             return float(match.group(0))
         return None
+
+
+def normalize_ex_type(raw_type: Optional[str]) -> str:
+    """
+    正規化跨市場（TWSE / TPEx）除權息類別字串：
+    統一移除前綴「除」字，使 TWSE 的 '息'/'權'/'權息' 與 TPEx 的 '除息'/'除權'/'除權息'
+    統一標準化為 '息'、'權' 或 '權息'。
+    """
+    cleaned = clean_text(raw_type)
+    if not cleaned:
+        return ""
+    return cleaned.replace("除", "").strip()
 
 
 def merge_margin_and_sbl(

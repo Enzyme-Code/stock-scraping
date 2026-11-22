@@ -1,6 +1,8 @@
 from .base import BaseProvider
 from .model import (
     BaseModel,
+    ExRightAnnouncementItem,
+    ExRightResultItem,
     InstitutionalInvestorItem,
     MarginTradingItem,
     StockPriceItem,
@@ -9,6 +11,8 @@ from .model import (
 __all__ = [
     "BaseModel",
     "BaseProvider",
+    "ExRightAnnouncementItem",
+    "ExRightResultItem",
     "InstitutionalInvestorItem",
     "MarginTradingItem",
     "StockPriceItem",
