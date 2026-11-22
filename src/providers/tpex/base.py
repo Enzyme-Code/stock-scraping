@@ -1,13 +1,19 @@
 from typing import Any, Dict, List
-from curl_cffi import requests
 
 from ..handler.base import BaseProvider
-from ..handler.model import InstitutionalInvestorItem, MarginTradingItem, StockPriceItem
-from ..utils import clean_text, format_iso_date, to_float, to_int, to_iso_date
+from ..handler.model import InstitutionalInvestorItem, StockPriceItem
+from ..utils import (
+    clean_text,
+    format_iso_date,
+    merge_margin_and_sbl,
+    to_float,
+    to_int,
+    to_iso_date,
+)
 
 
 class Base(BaseProvider):
-    """TPEx (櫃買中心) 專用基底類別，負責底層 HTTP 請求、重試機制與 JSON 資料解析。"""
+    """TPEx (櫃買中心) 專用基底類別，負責底層 HTTP 請求與 JSON 資料解析。"""
 
     TRADING_STOCK_URL: str = (
         "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
@@ -21,29 +27,6 @@ class Base(BaseProvider):
     MARGIN_SBL_URL: str = (
         "https://www.tpex.org.tw/www/zh-tw/margin/sbl"
     )
-
-    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """發送帶有自動重試、User-Agent 輪替與延遲等待的 HTTP 請求。"""
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                self._debug(f"{method.upper()} {url} (attempt {attempt}/{self.max_retries})")
-                response = self.session.request(
-                    method=method,
-                    url=url,
-                    timeout=self.timeout,
-                    **kwargs,
-                )
-                response.raise_for_status()
-                self._sleep()
-                return response
-            except Exception as exc:
-                self._debug(f"Request failed on attempt {attempt}: {exc}")
-                if attempt == self.max_retries:
-                    raise
-                self._rotate_user_agent()
-                self._retry_sleep(attempt)
-
-        raise RuntimeError(f"Unreachable retry state for {url}")
 
     def _fetch_stock_price_json(self, symbol: str, query_date: str) -> Dict[str, Any]:
         """發送 GET 請求至 TPEx tradingStock API 取得指定月份的個股日成交資訊 JSON。"""
@@ -322,55 +305,6 @@ class Base(BaseProvider):
 
         return sbl_map
 
-    def _merge_margin_and_sbl(
-        self,
-        margin_map: Dict[str, Dict[str, Any]],
-        sbl_map: Dict[str, Dict[str, Any]],
-        iso_date: str,
-    ) -> List[Dict[str, Any]]:
-        """
-        以 symbol 進行融資融券表與借券賣出表的 Outer Join：
-        - 融券相關欄位優先取自融資融券表 (margin_map)，若無信用交易資格則由借券賣出表 (sbl_map) 補齊。
-        - 借券賣出相關欄位取自借券賣出表 (sbl_map)。
-        """
-        all_symbols = list(dict.fromkeys(list(margin_map.keys()) + list(sbl_map.keys())))
-        results: List[Dict[str, Any]] = []
-
-        for symbol in all_symbols:
-            m = margin_map.get(symbol)
-            s = sbl_map.get(symbol)
-            short_src = m if m is not None else (s or {})
-
-            name = (m["name"] if m and m.get("name") else (s["name"] if s else "")) or ""
-
-            item = MarginTradingItem(
-                symbol=symbol,
-                name=name,
-                date=iso_date,
-                margin_buy=m["margin_buy"] if m else 0,
-                margin_sell=m["margin_sell"] if m else 0,
-                margin_cash_repay=m["margin_cash_repay"] if m else 0,
-                margin_prev_balance=m["margin_prev_balance"] if m else 0,
-                margin_balance=m["margin_balance"] if m else 0,
-                margin_limit=m["margin_limit"] if m else 0,
-                short_buy=short_src.get("short_buy", 0),
-                short_sell=short_src.get("short_sell", 0),
-                short_stock_repay=short_src.get("short_stock_repay", 0),
-                short_prev_balance=short_src.get("short_prev_balance", 0),
-                short_balance=short_src.get("short_balance", 0),
-                short_limit=short_src.get("short_limit", 0),
-                offset=m["offset"] if m else 0,
-                sbl_prev_balance=s["sbl_prev_balance"] if s else 0,
-                sbl_sell=s["sbl_sell"] if s else 0,
-                sbl_repay=s["sbl_repay"] if s else 0,
-                sbl_adjust=s["sbl_adjust"] if s else 0,
-                sbl_balance=s["sbl_balance"] if s else 0,
-                sbl_limit=s["sbl_limit"] if s else 0,
-            )
-            results.append(item.to_dict())
-
-        return results
-
     def _get_margin_trading(self, date: str) -> List[Dict[str, Any]]:
         """抓取並合併指定交易日的上櫃融資融券 (margin/balance) 與借券賣出 (margin/sbl) 明細。"""
         query_date = format_iso_date(date, "%Y/%m/%d")
@@ -382,7 +316,7 @@ class Base(BaseProvider):
         margin_map = self._parse_margin_table(data=margin_json)
         sbl_map = self._parse_sbl_table(data=sbl_json)
 
-        return self._merge_margin_and_sbl(
+        return merge_margin_and_sbl(
             margin_map=margin_map,
             sbl_map=sbl_map,
             iso_date=iso_date,

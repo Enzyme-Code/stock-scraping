@@ -2,7 +2,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 from bs4 import BeautifulSoup
-from curl_cffi import requests
 
 from ..handler.base import BaseProvider
 from ..utils import clean_text, to_int, to_iso_date
@@ -19,29 +18,6 @@ class Base(BaseProvider):
     BROKER_TRADING_URL_TEMPLATE: str = (
         "https://tw.stock.yahoo.com/quote/{symbol}/broker-trading"
     )
-
-    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """發送帶有自動重試、User-Agent 輪替與延遲等待的 HTTP 請求。"""
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                self._debug(f"{method.upper()} {url} (attempt {attempt}/{self.max_retries})")
-                response = self.session.request(
-                    method=method,
-                    url=url,
-                    timeout=self.timeout,
-                    **kwargs,
-                )
-                response.raise_for_status()
-                self._sleep()
-                return response
-            except Exception as exc:
-                self._debug(f"Request failed on attempt {attempt}: {exc}")
-                if attempt == self.max_retries:
-                    raise
-                self._rotate_user_agent()
-                self._retry_sleep(attempt)
-
-        raise RuntimeError(f"Unreachable retry state for {url}")
 
     @staticmethod
     def _normalize_broker_name(raw_name: Optional[str]) -> str:

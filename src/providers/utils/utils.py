@@ -1,6 +1,8 @@
 from datetime import datetime
 import re
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from ..handler.model import MarginTradingItem
 
 
 def clean_text(text: Optional[str]) -> str:
@@ -120,3 +122,52 @@ def to_float(val: Optional[Union[str, int, float]]) -> Optional[float]:
         if match:
             return float(match.group(0))
         return None
+
+
+def merge_margin_and_sbl(
+    margin_map: Dict[str, Dict[str, Any]],
+    sbl_map: Dict[str, Dict[str, Any]],
+    iso_date: str,
+) -> List[Dict[str, Any]]:
+    """
+    跨市場共用（TWSE / TPEx）的融資融券表與借券賣出表 Outer Join 合併邏輯：
+    - 融券相關欄位優先取自融資融券表 (margin_map)，若無信用交易資格則由借券賣出表 (sbl_map) 補齊。
+    - 借券賣出相關欄位取自借券賣出表 (sbl_map)。
+    """
+    all_symbols = list(dict.fromkeys(list(margin_map.keys()) + list(sbl_map.keys())))
+    results: List[Dict[str, Any]] = []
+
+    for symbol in all_symbols:
+        m = margin_map.get(symbol)
+        s = sbl_map.get(symbol)
+        short_src = m if m is not None else (s or {})
+
+        name = (m["name"] if m and m.get("name") else (s["name"] if s else "")) or ""
+
+        item = MarginTradingItem(
+            symbol=symbol,
+            name=name,
+            date=iso_date,
+            margin_buy=m["margin_buy"] if m else 0,
+            margin_sell=m["margin_sell"] if m else 0,
+            margin_cash_repay=m["margin_cash_repay"] if m else 0,
+            margin_prev_balance=m["margin_prev_balance"] if m else 0,
+            margin_balance=m["margin_balance"] if m else 0,
+            margin_limit=m["margin_limit"] if m else 0,
+            short_buy=short_src.get("short_buy", 0),
+            short_sell=short_src.get("short_sell", 0),
+            short_stock_repay=short_src.get("short_stock_repay", 0),
+            short_prev_balance=short_src.get("short_prev_balance", 0),
+            short_balance=short_src.get("short_balance", 0),
+            short_limit=short_src.get("short_limit", 0),
+            offset=m["offset"] if m else 0,
+            sbl_prev_balance=s["sbl_prev_balance"] if s else 0,
+            sbl_sell=s["sbl_sell"] if s else 0,
+            sbl_repay=s["sbl_repay"] if s else 0,
+            sbl_adjust=s["sbl_adjust"] if s else 0,
+            sbl_balance=s["sbl_balance"] if s else 0,
+            sbl_limit=s["sbl_limit"] if s else 0,
+        )
+        results.append(item.to_dict())
+
+    return results

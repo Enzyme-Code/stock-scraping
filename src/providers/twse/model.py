@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Optional
 
 from ..handler.model import BaseModel
 
@@ -54,7 +54,7 @@ class TwseSecurityItem(BaseModel):
     name: str                    # 證券名稱 (例如 '台泥')
     type: str                    # 證券類別 (例如 'stock', 'etf', 'etn')
     isin_code: str               # 國際證券辨識號碼 (ISIN Code)
-    listing_date: str  # 上市/上櫃/興櫃日 (ISO 格式: YYYY-MM-DD)
+    listing_date: Optional[str]  # 上市/上櫃/興櫃日 (ISO 格式: YYYY-MM-DD)
     market: str                  # 市場別 ('上市', '上櫃', '興櫃')
-    industry: str      # 產業別 (例如 '水泥工業'，若無則為 None)
+    industry: Optional[str]      # 產業別 (例如 '水泥工業'，若無則為 None)
     cfi_code: str                # CFICode (例如 'ESVUFR')

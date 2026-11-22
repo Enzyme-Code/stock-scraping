@@ -15,9 +15,10 @@ stock-scraping/
     ├── storage/             # 資料輸出與持久化層 (資料庫、Excel、CSV 等匯出邏輯)
     ├── utils/               # 全專案通用工具
     └── providers/           # 外部資料源爬蟲層 (僅負責抓取與基礎格式清洗)
-        ├── __init__.py      # 統一匯出各資料源 Client (例如 TwseClient, TpexClient, MopsClient)
+        ├── __init__.py      # 統一匯出各資料源 Client (例如 TwseClient, TpexClient, MopsClient, YahooClient)
         ├── handler/         # 所有 Provider 共用的底層抽象類別、共用模型與設定
-        │   ├── base.py      # 定義 BaseProvider (Session、Timeout、Sleep、Retry、UA 輪替、Debug)
+        │   ├── __init__.py
+        │   ├── base.py      # 定義 BaseProvider (Session、Timeout、Sleep、Retry、UA 輪替、_request、Debug)
         │   ├── model.py     # 定義 BaseModel (含 to_dict) 與跨市場共用模型 (如 StockPriceItem)
         │   └── config.yml   # 集中管理 Provider 預設參數 (Single Source of Truth)
         ├── utils/           # 跨 Provider 共用的清洗工具
@@ -25,15 +26,19 @@ stock-scraping/
         │   └── utils.py     # clean_text(), split_symbol_name(), to_iso_date(), format_iso_date() 等
         ├── twse/            # 證交所 (TWSE / ISIN) Provider
         │   ├── __init__.py
-        │   ├── base.py      # 定義 Base(BaseProvider)：處理 HTTP 請求、重試與 HTML/JSON 解析
+        │   ├── base.py      # 定義 Base(BaseProvider)：處理端點請求與 HTML/JSON 解析
         │   ├── client.py    # 定義 Client(Base)：保持精簡，僅暴露對外公開查詢方法
         │   └── model.py     # 定義資料模型 (@dataclass)、欄位映射與參數型別 (Literal)
-        ├── tpex/            # 櫃買中心 (TPEx) Provider
+        ├── tpex/            # 櫃買中心 (TPEx) Provider (共用 handler/model.py 模型)
+        │   ├── __init__.py
+        │   ├── base.py
+        │   └── client.py
+        ├── mops/            # 公開資訊觀測站 (MOPS) Provider
         │   ├── __init__.py
         │   ├── base.py
         │   ├── client.py
         │   └── model.py
-        └── mops/            # 公開資訊觀測站 (MOPS) Provider
+        └── yahoo/           # Yahoo 奇摩股市 Provider
             ├── __init__.py
             ├── base.py
             ├── client.py
