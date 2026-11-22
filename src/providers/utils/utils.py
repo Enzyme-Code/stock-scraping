@@ -30,13 +30,27 @@ def to_iso_date(date_str: Optional[str]) -> Optional[str]:
     支援：
     - 西元斜線/橫線/無分隔：'1962/02/09', '1962-02-09', '19620209'
     - 民國年斜線/橫線：'113/02/09', '113-02-09'
+    - 西元季度格式：'2026Q1' -> '2026-01-01', '2026Q2' -> '2026-04-01', '2026Q3' -> '2026-07-01', '2026Q4' -> '2026-10-01'
     若無法解析或為空字串則回傳 None。
     """
     cleaned = clean_text(date_str)
     if not cleaned:
         return None
 
-    # 1. 嘗試標準西元格式
+    # 1. 嘗試西元季度格式 (例如 2026Q1 ~ 2026Q4，統一轉為該季第一天 01/04/07/10-01)
+    quarter_match = re.match(r"^(\d{4})[Qq]([1-4])$", cleaned)
+    if quarter_match:
+        year = quarter_match.group(1)
+        q_num = quarter_match.group(2)
+        quarter_start_map = {
+            "1": "01-01",
+            "2": "04-01",
+            "3": "07-01",
+            "4": "10-01",
+        }
+        return f"{year}-{quarter_start_map[q_num]}"
+
+    # 2. 嘗試標準西元格式
     for fmt in ("%Y/%m/%d", "%Y-%m-%d", "%Y%m%d", "%Y.%m.%d"):
         try:
             return datetime.strptime(cleaned, fmt).strftime("%Y-%m-%d")
